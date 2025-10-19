@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鍵盤情境練習</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* 可愛風格設計 */
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #0c4a6e; /* sky-900 for letterboxing */
+            overflow: hidden; /* 隱藏滾動條 */
+        }
+        .game-container {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 1280px; 
+            height: 720px;
+            transform-origin: center;
+            background-color: #f0f9ff; /* sky-50 */
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .keyboard {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px;
+            background-color: #64748b; /* slate-500 */
+            border-radius: 10px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), inset 0 2px 4px 0 rgba(255, 255, 255, 0.1);
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .key-row { display: flex; justify-content: center; gap: 8px; }
+        .key {
+            display: flex; justify-content: center; align-items: center; height: 50px;
+            border-radius: 6px; background-color: #334155; /* slate-700 */ color: white;
+            font-size: 1rem; border-bottom: 4px solid #1e293b; /* slate-800 */
+            transition: all 0.1s ease-in-out; user-select: none; flex-grow: 1; cursor: pointer;
+        }
+        .key:active, .key.pressed { transform: translateY(2px); border-bottom-width: 2px; filter: brightness(0.9); }
+        .key.correct-flash { animation: correct-flash 1s ease; }
+        .key.incorrect-flash { animation: incorrect-flash 0.5s ease; }
+        @keyframes correct-flash {
+            0%, 100% { background-color: #334155; border-color: #1e293b; }
+            50% { background-color: #10b981; border-color: #059669; }
+        }
+        @keyframes incorrect-flash {
+            0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); }
+        }
+        .key[data-key="Space"] { flex-grow: 5; }
+        .key[data-key="Backspace"], .key[data-key="Delete"] { flex-grow: 1.5; }
+        .key[data-key="ShiftLeft"], .key[data-key="ShiftRight"] { flex-grow: 2.5; }
+        .key[data-key="CapsLock"] { flex-grow: 2; }
+        .caps-light {
+            width: 8px; height: 8px; background-color: #475569; border-radius: 50%;
+            transition: background-color 0.2s; margin-bottom: 20px; margin-left: 4px;
+        }
+        .caps-light.on, .num-light.on { background-color: #68d391; box-shadow: 0 0 5px #68d391; }
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-30px); } 60% { transform: translateY(-15px); }
+        }
+        #trophy-icon { animation: bounce 2s infinite; }
+        /* 排行榜樣式 */
+        .leaderboard-container ol { list-style-type: decimal; padding-left: 2.5rem; }
+        .leaderboard-container li { display: flex; justify-content: space-between; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+        .leaderboard-container li:nth-child(odd) { background-color: #e0f2fe; }
+        .leaderboard-container li.current-user { background-color: #fecaca; font-weight: bold; }
+    </style>
+</head>
+<body class="bg-sky-900">
+    <div class="game-container rounded-3xl shadow-xl p-6 md:p-8 text-center">
+        <!-- 計時器 -->
+        <div id="timer" class="absolute top-6 left-8 text-3xl font-bold text-red-600 bg-white/70 px-4 py-2 rounded-lg shadow-md flex items-center gap-2">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+             <span>時間: 00:00</span>
+        </div>
+
+        <!-- 右上角按鈕 -->
+        <div class="absolute top-6 right-8 flex gap-4">
+            <button id="show-leaderboard-button" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-4 rounded-full transition-transform transform hover:scale-105 shadow-lg">排行榜</button>
+            <button id="restart-game-button" class="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-4 rounded-full transition-transform transform hover:scale-105 shadow-lg">重新開始</button>
+        </div>
+        
+        <div id="game-area">
+            <h1 class="text-4xl md:text-5xl font-bold text-sky-600 mb-2">鍵盤情境練習</h1>
+            <p class="text-xl md:text-2xl text-slate-500 mb-8">請依據情境，在鍵盤上按下正確的按鍵</p>
+            <div class="mb-6 h-28 flex flex-col justify-center bg-sky-50 rounded-lg p-4 border border-sky-200 max-w-4xl mx-auto">
+                <h2 class="text-2xl md:text-3xl font-bold text-sky-800 mb-2">當前情境：</h2>
+                <p id="scenario-description" class="text-xl md:text-2xl text-slate-700"></p>
+            </div>
+            <div class="h-14 flex items-center justify-start bg-white rounded-lg p-4 border-2 border-slate-300 font-mono text-2xl mb-6 max-w-4xl mx-auto">
+                <span id="text-before-cursor"></span><span class="animate-ping text-sky-500">|</span><span id="text-after-cursor"></span>
+            </div>
+            <div id="feedback-message" class="mb-6 h-12 text-xl font-bold transition-opacity duration-300 opacity-0"></div>
+            <div id="keyboard-container" class="keyboard"></div>
+        </div>
+        
+        <div id="end-screen" class="hidden flex flex-row items-center justify-center gap-16">
+            <div class="text-left">
+                <h1 class="text-4xl md:text-5xl font-bold text-green-500 mb-4">恭喜過關！</h1>
+                <div id="trophy-icon" class="text-8xl mb-4 w-min">🏆</div>
+                <p id="final-time" class="text-2xl text-slate-600 mb-4"></p>
+                <p class="text-2xl text-slate-600 mb-8">你已完成所有鍵盤情境練習！</p>
+                <button id="restart-button-end" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 px-10 rounded-full text-xl transition-transform transform hover:scale-105 shadow-lg">
+                    再玩一次
+                </button>
+            </div>
+            <div id="leaderboard-end" class="leaderboard-container w-96 bg-white/70 p-6 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-sky-800 mb-4">🏆 排行榜 (Top 10)</h2>
+                <ol id="leaderboard-list-end" class="text-left text-lg text-slate-700"></ol>
+                <p id="loading-leaderboard-end" class="mt-4">排行榜讀取中...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 姓名輸入 Modal -->
+    <div id="name-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+            <h2 class="text-2xl font-bold mb-4">🎉 恭喜登上排行榜！</h2>
+            <p class="mb-4">請輸入你的名字：</p>
+            <form id="name-form">
+                <input type="text" id="player-name" class="border-2 border-slate-300 rounded-md p-2 text-lg w-full" maxlength="10" required>
+                <button type="submit" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full">送出</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 排行榜 Modal -->
+    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="leaderboard-container w-[28rem] bg-white p-8 rounded-xl shadow-lg text-center">
+            <h2 class="text-2xl font-bold text-sky-800 mb-4">🏆 排行榜 (Top 10)</h2>
+            <ol id="leaderboard-list-modal" class="text-left text-lg text-slate-700"></ol>
+            <p id="loading-leaderboard-modal" class="mt-4">排行榜讀取中...</p>
+            <button id="close-leaderboard-button" class="mt-6 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-6 rounded-full">關閉</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, inMemoryPersistence, setPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, orderBy, limit, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase 初始化 ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'keyboard-game-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let leaderboardCol;
+
+        async function initFirebase() {
+            try {
+                // 修復 Google Sites 嵌入問題
+                await setPersistence(auth, inMemoryPersistence);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                // 增加登入狀態檢查
+                if (auth.currentUser) {
+                    leaderboardCol = collection(db, `/artifacts/${appId}/public/data/leaderboard`);
+                } else {
+                    console.error("Firebase 匿名登入後, currentUser 仍然為 null。這可能是由於嵌入環境的限制。");
+                }
+            } catch (error) {
+                console.error("Firebase 初始化或登入失敗:", error);
+            }
+        }
+        
+        // --- 畫面縮放 ---
+        function scaleGame() {
+            const gameContainer = document.querySelector('.game-container');
+            const nativeWidth = 1280; const nativeHeight = 720;
+            const scale = Math.min(window.innerWidth / nativeWidth, window.innerHeight / nativeHeight);
+            gameContainer.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        }
+
+        // --- 音效模組 ---
+        let audioCtx;
+        function initAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { console.error("Web Audio API not supported"); } } }
+        
+        function playSound(type) { 
+            if (!audioCtx) return; 
+            audioCtx.resume(); 
+            const oscillator = audioCtx.createOscillator(); 
+            const gainNode = audioCtx.createGain(); 
+            oscillator.connect(gainNode); 
+            gainNode.connect(audioCtx.destination); 
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime); 
+            switch (type) { 
+                case 'success': 
+                    const o1 = audioCtx.createOscillator(), g1 = audioCtx.createGain(); o1.connect(g1); g1.connect(audioCtx.destination); o1.type = 'sine'; o1.frequency.setValueAtTime(1046.50, audioCtx.currentTime); g1.gain.setValueAtTime(0.7, audioCtx.currentTime); g1.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15); o1.start(audioCtx.currentTime); o1.stop(audioCtx.currentTime + 0.15); 
+                    const o2 = audioCtx.createOscillator(), g2 = audioCtx.createGain(); o2.connect(g2); g2.connect(audioCtx.destination); o2.type = 'sine'; o2.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.15); g2.gain.setValueAtTime(0.7, audioCtx.currentTime + 0.15); g2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3); o2.start(audioCtx.currentTime + 0.15); o2.stop(audioCtx.currentTime + 0.3); 
+                    return; 
+                case 'error': 
+                    oscillator.type = 'square'; oscillator.frequency.setValueAtTime(120, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.4, audioCtx.currentTime + 0.05); gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.25); 
+                    break; 
+                case 'win': 
+                    [523.25, 659.25, 783.99, 1046.50].forEach((tone, i) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.type = 'triangle'; o.frequency.setValueAtTime(tone, audioCtx.currentTime + i * 0.15); g.gain.setValueAtTime(0.5, audioCtx.currentTime + i * 0.15); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + i * 0.15 + 0.1); o.start(audioCtx.currentTime + i * 0.15); o.stop(audioCtx.currentTime + i * 0.15 + 0.12); }); 
+                    return; 
+            } 
+            oscillator.start(); 
+            oscillator.stop(audioCtx.currentTime + 0.3); 
+        }
+
+        // --- 排行榜邏輯 (已重構) ---
+        let leaderboardData = [];
+        async function fetchLeaderboardData() {
+            leaderboardData = [];
+            // 強化檢查機制
+            if (!leaderboardCol || !auth.currentUser) { 
+                return '排行榜連線失敗 (嵌入環境限制)'; 
+            }
+            try {
+                const q = query(leaderboardCol, orderBy("time"), limit(10));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach(doc => {
+                    leaderboardData.push({ id: doc.id, ...doc.data() });
+                });
+                return null; // 代表成功
+            } catch (error) {
+                console.error("讀取排行榜失敗:", error);
+                return '排行榜讀取失敗';
+            }
+        }
+        
+        function populateLeaderboardUI(listEl, loadingEl, currentUserScore = null) {
+            listEl.innerHTML = '';
+            leaderboardData.forEach((score, index) => {
+                const li = document.createElement('li');
+                const nameSpan = document.createElement('span');
+                const timeSpan = document.createElement('span');
+                nameSpan.textContent = `${index + 1}. ${score.name}`;
+                timeSpan.textContent = formatTime(score.time);
+                li.appendChild(nameSpan);
+                li.appendChild(timeSpan);
+                if (currentUserScore && currentUserScore.id === score.id) {
+                    li.classList.add('current-user');
+                }
+                listEl.appendChild(li);
+            });
+            loadingEl.textContent = leaderboardData.length === 0 ? '目前沒有紀錄，來搶頭香吧！' : '';
+        }
+        
+        async function checkAndSaveScore(time) {
+            const isTop10 = leaderboardData.length < 10 || time < leaderboardData[leaderboardData.length - 1].time;
+            if (isTop10 && leaderboardCol) { // 增加檢查
+                const modal = document.getElementById('name-modal');
+                const nameInput = document.getElementById('player-name');
+                const nameForm = document.getElementById('name-form');
+                nameInput.value = '';
+                modal.classList.remove('hidden');
+                nameInput.focus();
+                nameForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    const name = nameInput.value.trim();
+                    if (!name) return;
+                    modal.classList.add('hidden');
+                    try {
+                        await addDoc(leaderboardCol, { name, time });
+                        if (leaderboardData.length >= 10) {
+                             const q = query(leaderboardCol, orderBy("time"), limit(11));
+                             const snapshot = await getDocs(q);
+                             if (snapshot.docs.length > 10) {
+                                 const docToDelete = snapshot.docs[snapshot.docs.length - 1];
+                                 await deleteDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, docToDelete.id));
+                             }
+                        }
+                        const error = await fetchLeaderboardData();
+                        const listEl = document.getElementById('leaderboard-list-end');
+                        const loadingEl = document.getElementById('loading-leaderboard-end');
+                        if (error) { loadingEl.textContent = error; }
+                        else { populateLeaderboardUI(listEl, loadingEl); }
+                    } catch (error) {
+                        console.error("儲存分數失敗:", error);
+                    }
+                };
+            }
+        }
+
+        // --- 遊戲主要邏輯 ---
+        function shuffleArray(array) { let currentIndex = array.length, randomIndex; while (currentIndex !== 0) { randomIndex = Math.floor(Math.random() * currentIndex); currentIndex--; [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]]; } return array; }
+        
+        const scenarios = [
+            { id: 'shift', description: '我想打中文，但現在只能打英文...', targetKeys: ['ShiftLeft', 'ShiftRight'], solutionText: '太棒了！按 Shift 鍵可以快速切換中/英輸入法。', initialText: 'Typing in English|' },
+            { id: 'numlock', description: '我想輸入右邊的數字 123，但按了都沒反應...', targetKeys: ['NumLock'], solutionText: '沒錯！按 Num Lock 鍵來啟用或關閉右側數字鍵盤。', initialText: '123...|' },
+            { id: 'delete', description: '這個字很多餘，我想刪除游標「後方」的文字。', targetKeys: ['Delete'], solutionText: '做得好！Delete 鍵可以刪除游標後方(右方)的文字。', initialText: '多餘的字|在這裡' },
+            { id: 'backspace', description: '打錯字了，我想刪除游標「前方」的文字。', targetKeys: ['Backspace'], solutionText: '對！用 Backspace 鍵可以刪除游標前方(左方)的文字。', initialText: '這是一個錯字|' },
+            { id: 'capslock', description: '接下來，我想輸入全部大寫英文字母', targetKeys: ['CapsLock'], solutionText: '是的！按 Caps Lock 鍵可以鎖定英文大寫。', initialText: 'all lowercase|' }
+        ];
+        const keyboardLayout = [ ['`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 'Backspace', 'Delete', 'NumLock'], ['Tab', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', '\\'], ['CapsLock', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', "'", 'Enter'], ['ShiftLeft', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/', 'ShiftRight'], ['ControlLeft', 'AltLeft', 'Space', 'AltRight', 'ControlRight'] ];
+        const keyMap = { '`': 'Backquote', '1': 'Digit1', '2': 'Digit2', '3': 'Digit3', '4': 'Digit4', '5': 'Digit5', '6': 'Digit6', '7': 'Digit7', '8': 'Digit8', '9': 'Digit9', '0': 'Digit0', '-': 'Minus', '=': 'Equal', 'Backspace': 'Backspace', 'Delete': 'Delete', 'Tab': 'Tab', 'Q': 'KeyQ', 'W': 'KeyW', 'E': 'KeyE', 'R': 'KeyR', 'T': 'KeyT', 'Y': 'KeyY', 'U': 'KeyU', 'I': 'KeyI', 'O': 'KeyO', 'P': 'KeyP', '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash', 'CapsLock': 'CapsLock', 'A': 'KeyA', 'S': 'KeyS', 'D': 'KeyD', 'F': 'KeyF', 'G': 'KeyG', 'H': 'KeyH', 'J': 'KeyJ', 'K': 'KeyK', 'L': 'KeyL', ';': 'Semicolon', "'": 'Quote', 'Enter': 'Enter', 'ShiftLeft': 'ShiftLeft', 'Z': 'KeyZ', 'X': 'KeyX', 'C': 'KeyC', 'V': 'KeyV', 'B': 'KeyB', 'N': 'KeyN', 'M': 'KeyM', ',': 'Comma', '.': 'Period', '/': 'Slash', 'ShiftRight': 'ShiftRight', 'ControlLeft': 'ControlLeft', 'AltLeft': 'AltLeft', 'Space': 'Space', 'AltRight': 'AltRight', 'ControlRight': 'ControlRight', 'NumLock': 'NumLock' };
+        
+        const gameArea = document.getElementById('game-area'); const endScreen = document.getElementById('end-screen'); const scenarioDescEl = document.getElementById('scenario-description'); const textBeforeCursorEl = document.getElementById('text-before-cursor'); const textAfterCursorEl = document.getElementById('text-after-cursor'); const keyboardContainer = document.getElementById('keyboard-container'); const feedbackMessageEl = document.getElementById('feedback-message'); 
+
+        let shuffledScenarios = [];
+        let currentScenarioIndex = 0;
+        let blockInput = false;
+        let isCapsOn = false; 
+        let isNumLockOn = true;
+        
+        let timerInterval;
+        let startTime;
+        let elapsedTime = 0;
+        let isPaused = false;
+        let timeWhenPaused = 0;
+
+        function formatTime(ms) { const totalSeconds = Math.floor(ms / 1000); const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0'); const seconds = (totalSeconds % 60).toString().padStart(2, '0'); return `${minutes}:${seconds}`; }
+
+        function updateTimer() { if(!isPaused) { elapsedTime = timeWhenPaused + (Date.now() - startTime); document.querySelector('#timer span').textContent = `時間: ${formatTime(elapsedTime)}`; } }
+        function pauseTimer() { if(!isPaused) { isPaused = true; clearInterval(timerInterval); timeWhenPaused = elapsedTime; } }
+        function resumeTimer() { if(isPaused) { isPaused = false; startTime = Date.now(); timerInterval = setInterval(updateTimer, 1000); } }
+        
+        function createKeyboard() { keyboardContainer.innerHTML = ''; keyboardLayout.forEach(row => { const rowEl = document.createElement('div'); rowEl.className = 'key-row'; row.forEach(keyText => { const keyEl = document.createElement('div'); const keyId = keyMap[keyText] || keyText; keyEl.className = 'key'; keyEl.dataset.key = keyId; if (keyText === 'CapsLock') { const text = document.createElement('span'); text.textContent = 'Caps Lock'; const light = document.createElement('div'); light.className = 'caps-light'; keyEl.style.flexDirection = 'column'; keyEl.style.alignItems = 'start'; keyEl.style.padding = '5px'; keyEl.appendChild(text); keyEl.appendChild(light); } else if (keyText === 'NumLock') { const text = document.createElement('span'); text.textContent = 'Num Lock'; const light = document.createElement('div'); light.className = 'caps-light num-light on'; keyEl.style.flexDirection = 'column'; keyEl.style.alignItems = 'start'; keyEl.style.padding = '5px'; keyEl.appendChild(text); keyEl.appendChild(light); } else { keyEl.textContent = keyText.replace('Left', '').replace('Right', ''); } rowEl.appendChild(keyEl); }); keyboardContainer.appendChild(rowEl); }); }
+        
+        function updateLights() { const capsLight = document.querySelector('.caps-light'); const numLight = document.querySelector('.num-light'); if(capsLight) capsLight.classList.toggle('on', isCapsOn); if(numLight) numLight.classList.toggle('on', isNumLockOn); }
+
+        function loadScenario(index) { blockInput = false; const scenario = shuffledScenarios[index]; scenarioDescEl.textContent = scenario.description; const textParts = scenario.initialText.split('|'); textBeforeCursorEl.textContent = textParts[0]; textAfterCursorEl.textContent = textParts[1] || ''; feedbackMessageEl.classList.remove('opacity-100'); feedbackMessageEl.classList.add('opacity-0'); if (scenario.id === 'numlock') isNumLockOn = false; else isNumLockOn = true; if (scenario.id === 'capslock') isCapsOn = false; updateLights(); }
+
+        function handleKeyPress(e) {
+            const nameModal = document.getElementById('name-modal');
+            const lbModal = document.getElementById('leaderboard-modal');
+            if (!nameModal.classList.contains('hidden') || !lbModal.classList.contains('hidden')) { return; }
+            initAudio(); 
+            const pressedKey = e.code;
+            if(e.preventDefault) e.preventDefault();
+            if (blockInput) return;
+            const currentScenario = shuffledScenarios[currentScenarioIndex];
+            const keyEl = document.querySelector(`.key[data-key="${pressedKey}"]`);
+            if (keyEl) { keyEl.classList.add('pressed'); setTimeout(() => keyEl.classList.remove('pressed'), 200); }
+            if (currentScenario.targetKeys.includes(pressedKey)) {
+                playSound('success');
+                blockInput = true;
+                if (keyEl) keyEl.classList.add('correct-flash');
+                feedbackMessageEl.textContent = "✔ " + currentScenario.solutionText;
+                feedbackMessageEl.classList.remove('text-red-500', 'opacity-0');
+                feedbackMessageEl.classList.add('text-emerald-600', 'opacity-100');
+                if (currentScenario.id === 'capslock') isCapsOn = !isCapsOn;
+                if (currentScenario.id === 'numlock') isNumLockOn = !isNumLockOn;
+                updateLights();
+                setTimeout(() => {
+                    if (keyEl) keyEl.classList.remove('correct-flash');
+                    currentScenarioIndex++;
+                    if (currentScenarioIndex >= shuffledScenarios.length) {
+                        showEndScreen();
+                    } else {
+                        loadScenario(currentScenarioIndex);
+                    }
+                }, 2500);
+            } else {
+                 playSound('error');
+                 feedbackMessageEl.textContent = '再試一次... 🤔';
+                 feedbackMessageEl.classList.remove('text-emerald-600', 'opacity-0');
+                 feedbackMessageEl.classList.add('text-red-500', 'opacity-100');
+                 if (keyEl) { keyEl.classList.add('incorrect-flash'); setTimeout(() => keyEl.classList.remove('incorrect-flash'), 500); }
+            }
+        }
+        
+        async function showEndScreen() {
+            pauseTimer();
+            playSound('win');
+            gameArea.classList.add('hidden');
+            endScreen.classList.remove('hidden');
+            document.getElementById('final-time').textContent = `你的成績: ${formatTime(elapsedTime)}`;
+            const listEl = document.getElementById('leaderboard-list-end');
+            const loadingEl = document.getElementById('loading-leaderboard-end');
+            loadingEl.textContent = '排行榜讀取中...';
+            const error = await fetchLeaderboardData();
+            if(error) { loadingEl.textContent = error; }
+            else { populateLeaderboardUI(listEl, loadingEl); }
+            await checkAndSaveScore(elapsedTime);
+        }
+
+        function startGame() {
+            shuffledScenarios = shuffleArray([...scenarios]);
+            currentScenarioIndex = 0;
+            blockInput = false;
+            endScreen.classList.add('hidden');
+            gameArea.classList.remove('hidden');
+            document.getElementById('name-modal').classList.add('hidden');
+            document.getElementById('leaderboard-modal').classList.add('hidden');
+            
+            isPaused = false;
+            timeWhenPaused = 0;
+            startTime = Date.now();
+            elapsedTime = 0;
+            updateTimer();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 1000);
+            
+            loadScenario(currentScenarioIndex);
+        }
+        
+        function enableVirtualKeyboard() { keyboardContainer.addEventListener('click', (e) => { const key = e.target.closest('.key'); if(key && key.dataset.key) { const mockEvent = { code: key.dataset.key, preventDefault: ()=>{} }; handleKeyPress(mockEvent); } }); }
+
+        async function initGame() {
+            await initFirebase();
+            createKeyboard();
+            enableVirtualKeyboard();
+            window.addEventListener('keydown', handleKeyPress);
+            document.getElementById('restart-button-end').addEventListener('click', () => { initAudio(); startGame(); });
+            document.getElementById('restart-game-button').addEventListener('click', () => { initAudio(); startGame(); });
+            
+            // 排行榜 Modal 按鈕
+            const lbModal = document.getElementById('leaderboard-modal');
+            document.getElementById('show-leaderboard-button').addEventListener('click', async () => {
+                initAudio();
+                pauseTimer();
+                const listEl = document.getElementById('leaderboard-list-modal');
+                const loadingEl = document.getElementById('loading-leaderboard-modal');
+                listEl.innerHTML = '';
+                loadingEl.textContent = '排行榜讀取中...';
+                lbModal.classList.remove('hidden');
+                const error = await fetchLeaderboardData();
+                if(error) { loadingEl.textContent = error; } 
+                else { populateLeaderboardUI(listEl, loadingEl); }
+            });
+            document.getElementById('close-leaderboard-button').addEventListener('click', () => {
+                lbModal.classList.add('hidden');
+                resumeTimer();
+            });
+
+            window.addEventListener('resize', scaleGame);
+            scaleGame();
+            startGame();
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
+
